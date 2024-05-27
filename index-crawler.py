@@ -6,7 +6,8 @@ from apscheduler.schedulers.blocking import BlockingScheduler
 
 # List of base URLs of the servers
 servers = [
-    'http://localhost:8000/'
+    'http://localhost:8000/',
+    'http://localhost:8001/'
     # Add more servers as needed
 ]
 
@@ -20,14 +21,40 @@ def save_data(url, data, save_as_file=False):
     """Save JSON data to a local file, maintaining the directory structure."""
     parsed_url = urlparse(url)
     path = parsed_url.path.lstrip('/')
-    
+
     if save_as_file:
         path = path.rstrip('/')
-        print(f"Saving data to {path}.jsonld")
         # Save data directly to a file, treat path as file name
         file_path = path + '.jsonld'
+
+        # Read existing data if it exists
+        old_data = None
+        if os.path.exists(file_path):
+            with open(file_path, 'r') as f:
+                old_data = json.load(f)
+
+        if old_data:
+            # Compute differences
+            differences = diff_references(old_data, data)
+            if differences:
+                print(f"Differences found in {url}: {differences}")
+
+                # Merge old and new data without duplicates
+                old_graph = {item['@id']: item for item in old_data.get('@graph', [])}
+                new_graph = {item['@id']: item for item in data.get('@graph', [])}
+                merged_graph = {**old_graph, **new_graph}  # merge dictionaries, new_data will overwrite old_data for duplicate keys
+
+                merged_data = {
+                    "@context": old_data.get("@context"),
+                    "@graph": list(merged_graph.values())
+                }
+            else:
+                merged_data = data
+        else:
+            merged_data = data
+        
         with open(file_path, 'w') as f:
-            json.dump(data, f, indent=2)
+            json.dump(merged_data, f, indent=2)
     else:
         if not path:
           path = './'
