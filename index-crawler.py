@@ -29,32 +29,21 @@ def save_data(url, data, save_as_file=False):
 
         # Read existing data if it exists
         old_data = None
+        merged_data = None
         if os.path.exists(file_path):
             with open(file_path, 'r') as f:
                 old_data = json.load(f)
 
+        # print(f"Old data found in {file_path}: {old_data}")
         if old_data:
-            # Compute differences
-            differences = diff_references(old_data, data)
-            if differences:
-                print(f"Differences found in {url}: {differences}")
-
-                # Merge old and new data without duplicates
-                old_graph = {item['@id']: item for item in old_data.get('@graph', [])}
-                new_graph = {item['@id']: item for item in data.get('@graph', [])}
-                merged_graph = {**old_graph, **new_graph}  # merge dictionaries, new_data will overwrite old_data for duplicate keys
-
-                merged_data = {
-                    "@context": old_data.get("@context"),
-                    "@graph": list(merged_graph.values())
-                }
-            else:
-                merged_data = data
+            # Compute differences and merge ex:instance arrays
+            merged_data = merge_instances(old_data, data)
         else:
             merged_data = data
-        
-        with open(file_path, 'w') as f:
-            json.dump(merged_data, f, indent=2)
+
+        if merged_data:
+          with open(file_path, 'w') as f:
+              json.dump(merged_data, f, indent=2)
     else:
         if not path:
           path = './'
@@ -70,13 +59,23 @@ def read_local_data(path):
         with open(path + '.jsonld', 'r') as f:
             return json.load(f)
     return None
+  
+def merge_instances(old_data, new_data):
+    """Merge old and new data, combining ex:instance arrays without duplicates."""
+    merged_data = old_data.copy()
+    if 'ex:instance' in old_data and 'ex:instance' in new_data:
+        merged_instances = diff_references(old_data, new_data)
+        merged_data['ex:instance'] = merged_instances
+    return merged_data
+
 
 def diff_references(old_data, new_data):
-    """Compare references between old and new data."""
-    old_references = set(item['@id'] for item in old_data.get('@graph', []))
-    new_references = set(item['@id'] for item in new_data.get('@graph', []))
-    return new_references - old_references
-  
+    """Compare and merge ex:instance arrays in old and new data."""
+    old_instances = set(old_data.get('ex:instance', []))
+    new_instances = set(new_data.get('ex:instance', []))
+    return list(old_instances | new_instances)
+
+
 def get_public_type_index(root_data):
     """Extract solid:publicTypeIndex from root data."""
     for item in root_data.get('@graph', []):
@@ -116,6 +115,10 @@ def process_indexes(url, aggregated_data, save_as_file=False):
                 process_indexes(instances_in, aggregated_data, True)
         elif item.get('@type') == 'ex:Index':
             process_indexes(item['@id'], aggregated_data)
+
+    if not data.get('@graph', None) and '@type' in data and data['@type'] == 'ex:PropertyIndex':
+      print(f"PropertyIndex found in {url}")
+      save_data(data['@id'], data, True)
 
 def aggregate_data():
     """Aggregate data from all servers and endpoints."""
