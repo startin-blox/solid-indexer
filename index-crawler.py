@@ -36,22 +36,29 @@ def save_data(url, data, save_as_file=False):
 
         # print(f"Old data found in {file_path}: {old_data}")
         if old_data:
-            # Compute differences and merge ex:instance arrays
-            merged_data = merge_instances(old_data, data)
-        else:
-            merged_data = data
+            # Determine the merging strategy
+            if '@graph' in old_data and '@graph' in data:
+                merged_data = merge_graphs(old_data, data)
+            elif old_data.get('@type') == 'ex:PropertyIndex' and 'ex:instance' in old_data and 'ex:instance' in data:
+                merged_data = merge_instances(old_data, data)
+            else:
+                merged_data = data
 
-        if merged_data:
-          with open(file_path, 'w') as f:
-              json.dump(merged_data, f, indent=2)
+            if merged_data:
+              with open(file_path, 'w') as f:
+                  json.dump(merged_data, f, indent=2)
+        else:
+            dir_name = os.path.dirname(path)
+            if dir_name and not os.path.exists(dir_name):
+                os.makedirs(dir_name, exist_ok=True)
+            with open(file_path, 'w') as f:
+                json.dump(data, f, indent=2)
     else:
         if not path:
           path = './'
         dir_name = os.path.dirname(path)
         if dir_name and not os.path.exists(dir_name):
             os.makedirs(dir_name, exist_ok=True)
-        with open(path + '.jsonld', 'w') as f:
-            json.dump(data, f, indent=2)
 
 def read_local_data(path):
     """Read JSON data from a local file."""
@@ -59,6 +66,19 @@ def read_local_data(path):
         with open(path + '.jsonld', 'r') as f:
             return json.load(f)
     return None
+  
+def merge_graphs(old_data, new_data):
+    """Merge old and new data, combining @graph arrays without duplicates."""
+    old_graph = {item['@id']: item for item in old_data.get('@graph', [])}
+    new_graph = {item['@id']: item for item in new_data.get('@graph', [])}
+    merged_graph = {**old_graph, **new_graph}  # merge dictionaries, new_data will overwrite old_data for duplicate keys
+    
+    merged_data = {
+        "@context": old_data.get("@context"),
+        "@graph": list(merged_graph.values())
+    }
+    return merged_data
+
   
 def merge_instances(old_data, new_data):
     """Merge old and new data, combining ex:instance arrays without duplicates."""
